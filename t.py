@@ -4,10 +4,10 @@ import time
 from datetime import datetime
 
 # SFTP server details
-host = '192.168.125.18'
+host = ''
 port = 22
-username = 'andrew'
-password = ' '
+username = ''
+password = ''
 remote_path = '/home/andrew/'
 local_state_file = '/dev_env/sftp/local_state.txt'  # Where we keep track of the file changes
 
