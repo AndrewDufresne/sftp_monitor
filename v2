@@ -1,0 +1,73 @@
+import pysftp
+import cx_Oracle
+import os
+from time import sleep
+
+# Database connection details
+oracle_dsn = cx_Oracle.makedsn('host', 'port', service_name='service')
+oracle_connection = cx_Oracle.connect(user='username', password='password', dsn=oracle_dsn)
+
+# SFTP connection details
+sftp_host = 'sftp_host'
+sftp_username = 'sftp_username'
+sftp_password = 'sftp_password'
+sftp_directory = '/remote/directory/'
+
+# Local directory to store downloaded files (if needed)
+local_directory = './downloaded_files/'
+
+# Function to insert file details into Oracle DB
+def save_file_to_db(file_name):
+    try:
+        cursor = oracle_connection.cursor()
+        sql = "INSERT INTO monitored_files (file_name, processed) VALUES (:1, :2)"
+        cursor.execute(sql, (file_name, 0))  # 0 indicates the file is not yet processed
+        oracle_connection.commit()
+        cursor.close()
+        print(f"File '{file_name}' saved to the database.")
+    except cx_Oracle.Error as e:
+        print("Error inserting file into the database:", e)
+
+# Function to parse the new file (logic depends on the file type)
+def parse_new_file(file_path):
+    print(f"Parsing file: {file_path}")
+    # Add your file parsing logic here (e.g., CSV, XML, etc.)
+    # Example: Reading a text file
+    with open(file_path, 'r') as file:
+        data = file.read()
+        print(data)
+
+# Function to check for new files on the SFTP server
+def check_sftp_for_new_files():
+    try:
+        with pysftp.Connection(host=sftp_host, username=sftp_username, password=sftp_password) as sftp:
+            sftp.cwd(sftp_directory)
+            remote_files = sftp.listdir()
+
+            for file in remote_files:
+                cursor = oracle_connection.cursor()
+                cursor.execute("SELECT COUNT(*) FROM monitored_files WHERE file_name = :1", (file,))
+                result = cursor.fetchone()
+
+                if result[0] == 0:  # If file is not in DB, it's a new file
+                    print(f"New file detected: {file}")
+                    
+                    # Download the file (if needed)
+                    local_file_path = os.path.join(local_directory, file)
+                    sftp.get(file, local_file_path)
+
+                    # Save file name to the database
+                    save_file_to_db(file)
+
+                    # Parse the new file
+                    parse_new_file(local_file_path)
+
+                cursor.close()
+    except Exception as e:
+        print("Error while checking SFTP server:", e)
+
+# Main monitoring loop
+if __name__ == "__main__":
+    while True:
+        check_sftp_for_new_files()
+        sleep(60)  # Check every 60 seconds (adjust as needed)
